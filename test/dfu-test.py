@@ -373,6 +373,33 @@ def relocate_flash_addresses(blob: bytes, link_origin: int, run_origin: int, win
 	return bytes(out)
 
 
+def _write_intel_hex(data: bytes, base_address: int, path: str) -> None:
+	"""Write a flat binary blob as an Intel HEX file rooted at base_address."""
+
+	def make_record(rec_type: int, address: int, payload: bytes) -> str:
+		rec = bytes([len(payload), (address >> 8) & 0xFF, address & 0xFF, rec_type]) + payload
+		checksum = (-(sum(rec))) & 0xFF
+		return ":" + rec.hex().upper() + f"{checksum:02X}"
+
+	row_size = 16
+	current_upper = -1
+
+	with open(path, "w", newline="\n") as f:
+		for offset in range(0, len(data), row_size):
+			abs_addr = base_address + offset
+			upper = (abs_addr >> 16) & 0xFFFF
+
+			if upper != current_upper:
+				upper_bytes = bytes([(upper >> 8) & 0xFF, upper & 0xFF])
+				f.write(make_record(4, 0, upper_bytes) + "\n")
+				current_upper = upper
+
+			chunk = data[offset:offset + row_size]
+			f.write(make_record(0, abs_addr & 0xFFFF, chunk) + "\n")
+
+		f.write(":00000001FF\n")
+
+
 class STM32DFU:
 	"""Minimal STM32 DFU (DfuSe-style) client over native USB control transfers."""
 
@@ -752,6 +779,19 @@ def main():
 	ps.add_argument("--manifest", action="store_true",
 				help="Send final zero-length DNLOAD after successful write (may reset and run app)")
 
+	mp = sub.add_parser(
+		"merge-production",
+		help="Merge bootloader + signed package into a single flat binary (and optionally Intel HEX) for production flashing",
+	)
+	mp.add_argument("outfile", help="Output path for the merged flat binary (e.g. production.bin)")
+	mp.add_argument("--bl", required=True, help="Bootloader binary file (e.g. lifu-transmitter-bl.bin)")
+	mp.add_argument("--package", required=True,
+				help="Signed firmware package produced by pack-signed (e.g. lifu-transmitter-fw.bin.signed.bin)")
+	mp.add_argument("--base-address", type=_parse_int, default=0x08000000,
+				help="Flash base address where bootloader is placed (default: 0x08000000)")
+	mp.add_argument("--hex", action="store_true",
+				help="Also write an Intel HEX file alongside the .bin (same path, .hex extension)")
+
 	args = p.parse_args()
 
 	if args.cmd == "sign-metadata":
@@ -909,6 +949,74 @@ def main():
 			f"Package verify OK (key_id={key_id}, fw_addr=0x{fw_addr:08X}, "
 			f"meta_addr=0x{pkg['meta_address']:08X}, flags=0x{flags:04X})"
 		)
+		return
+
+	if args.cmd == "merge-production":
+		with open(args.bl, "rb") as f:
+			bl_data = f.read()
+
+		with open(args.package, "rb") as f:
+			pkg = parse_signed_package(f.read())
+
+		fw = pkg["fw"]
+		meta = pkg["meta"]
+		fw_address = pkg["fw_address"]
+		meta_address = pkg["meta_address"]
+		base = args.base_address
+
+		# Sanity checks
+		if fw_address < base:
+			raise SystemExit(f"Firmware address 0x{fw_address:08X} is below base 0x{base:08X}")
+		if meta_address < base:
+			raise SystemExit(f"Metadata address 0x{meta_address:08X} is below base 0x{base:08X}")
+		bl_end = base + len(bl_data)
+		if bl_end > meta_address:
+			raise SystemExit(
+				f"Bootloader ({len(bl_data)} bytes) ends at 0x{bl_end:08X}, "
+				f"which overlaps metadata region at 0x{meta_address:08X}"
+			)
+		if meta_address + len(meta) > fw_address:
+			raise SystemExit(
+				f"Metadata region (0x{meta_address:08X}+{len(meta)}) overlaps firmware at 0x{fw_address:08X}"
+			)
+
+		# Build flat image: 0xFF-filled from base to end of firmware
+		image_size = (fw_address + len(fw)) - base
+		image = bytearray(b"\xFF" * image_size)
+
+		image[0 : len(bl_data)] = bl_data
+		meta_off = meta_address - base
+		image[meta_off : meta_off + len(meta)] = meta
+		fw_off = fw_address - base
+		image[fw_off : fw_off + len(fw)] = fw
+
+		with open(args.outfile, "wb") as f:
+			f.write(bytes(image))
+
+		print(f"Production image written: {args.outfile} ({len(image)} bytes / {len(image) / 1024:.1f} KB)")
+		print(f"  Base address : 0x{base:08X}")
+		print(f"  Bootloader   : 0x{base:08X}  ({len(bl_data)} bytes)")
+		print(f"  Metadata     : 0x{meta_address:08X}  ({len(meta)} bytes)")
+		print(f"  Firmware     : 0x{fw_address:08X}  ({len(fw)} bytes)")
+		print()
+		print("Flash with OpenOCD:")
+		print(f"  openocd -f interface/stlink.cfg -f target/stm32l4x.cfg \\")
+		print(f'          -c "program {args.outfile} 0x{base:08X} verify reset exit"')
+		print()
+		print("Flash with STM32CubeProgrammer CLI:")
+		print(f"  STM32_Programmer_CLI -c port=SWD -d {args.outfile} 0x{base:08X} -v -rst")
+
+		if args.hex:
+			hex_path = (
+				args.outfile.rsplit(".", 1)[0] + ".hex"
+				if "." in args.outfile
+				else args.outfile + ".hex"
+			)
+			_write_intel_hex(bytes(image), base, hex_path)
+			print()
+			print(f"Intel HEX written: {hex_path}")
+			print("Flash HEX with STM32CubeProgrammer CLI (no base address needed):")
+			print(f"  STM32_Programmer_CLI -c port=SWD -d {hex_path} -v -rst")
 		return
 
 	with STM32DFU(vid=args.vid, pid=args.pid, transfer_size=args.xfer, libusb_dll=args.libusb_dll) as dfu:
