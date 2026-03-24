@@ -42,7 +42,7 @@ jobs:
       - name: Upload firmware artifact
         uses: actions/upload-artifact@v4
         with:
-          name: lifu-transmitter-fw
+          name: openlifu-transmitter-fw
           path: |
             build/Release/*.hex
             build/Release/*.bin
