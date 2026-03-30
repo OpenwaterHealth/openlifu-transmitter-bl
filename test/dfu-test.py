@@ -982,6 +982,14 @@ def main():
 
 		# Build flat image: 0xFF-filled from base to end of firmware
 		image_size = (fw_address + len(fw)) - base
+		# Guard against unreasonably large images that could exhaust memory
+		max_image_size = 32 * 1024 * 1024  # 32 MiB
+		if image_size <= 0 or image_size > max_image_size:
+			raise SystemExit(
+				f"Computed image size {image_size} bytes is invalid; "
+				f"expected 0 < size <= {max_image_size} bytes "
+				f"(fw_address=0x{fw_address:08X}, base=0x{base:08X}, fw_len={len(fw)})"
+			)
 		image = bytearray(b"\xFF" * image_size)
 
 		image[0 : len(bl_data)] = bl_data
