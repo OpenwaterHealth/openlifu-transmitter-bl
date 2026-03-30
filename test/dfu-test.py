@@ -1,6 +1,7 @@
 import argparse
 import hmac
 import hashlib
+from pathlib import Path
 import sys
 import struct
 import time
@@ -1015,11 +1016,7 @@ def main():
 		print(f"  STM32_Programmer_CLI -c port=SWD -d {args.outfile} 0x{base:08X} -v -rst")
 
 		if args.hex:
-			hex_path = (
-				args.outfile.rsplit(".", 1)[0] + ".hex"
-				if "." in args.outfile
-				else args.outfile + ".hex"
-			)
+			hex_path = str(Path(args.outfile).with_suffix(".hex"))
 			_write_intel_hex(bytes(image), base, hex_path)
 			print()
 			print(f"Intel HEX written: {hex_path}")
