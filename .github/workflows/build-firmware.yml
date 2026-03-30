@@ -9,7 +9,7 @@ on:
       - "pre-*"
 
 permissions:
-  contents: write 
+  contents: write
 
 jobs:
   build:
@@ -17,7 +17,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0        # full history so git-describe works
           fetch-tags: true       # ensure all tags are present
@@ -40,9 +40,9 @@ jobs:
       # Upload Firmware
       # ---------------------------
       - name: Upload firmware artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
-          name: lifu-transmitter-fw
+          name: openlifu-transmitter-fw
           path: |
             build/Release/*.hex
             build/Release/*.bin

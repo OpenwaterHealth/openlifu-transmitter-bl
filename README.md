@@ -261,7 +261,26 @@ openocd -f interface/stlink.cfg -f target/stm32l4x.cfg -c "program build/Release
 
 - `test/dfu-test.py` — USB DFU test helper (requires Python and pyserial or related deps).
 - `test/dfu-i2c-test.py` — I2C DFU test helper for downstream transmitters without USB.
+- `test/dfu-signing.py` — create a signed firmware package from an app binary already linked for `0x08010000` (no relocation).
 - `test/generate_keys.py` — helper to create test keys for signing/verifying images.
+
+Create a signed package for DFU (`program-package`):
+
+```bash
+python test/dfu-signing.py \
+      <path-to-app-bin> \
+      test/keys/fw_signing_key.pem \
+      --address 0x08010000 \
+      --meta-address 0x0800F800 \
+      --trust-keyfile test/keys/boot_trust_hmac_key.bin
+```
+
+Then flash it:
+
+```bash
+python test/dfu-test.py --libusb-dll test/libusb-1.0.29/VS2022/MS64/dll/libusb-1.0.dll \
+      program-package <path-to-signed-bin> --manifest
+```
 
 Install Python test requirements:
 
