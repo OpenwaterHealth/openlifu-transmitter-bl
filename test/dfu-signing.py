@@ -257,8 +257,9 @@ def main() -> None:
         print("  trust_tag: sealed")
 
     rel_out = os.path.relpath(str(outfile), str(Path.cwd()))
+    flash_script = Path("test") / "dfu-test.py"
     print("\nFlash with:")
-    print(f"python test\\dfu-test.py program-package {rel_out} --manifest")
+    print(f"python {flash_script.as_posix()} program-package {rel_out} --manifest")
 
 
 if __name__ == "__main__":
