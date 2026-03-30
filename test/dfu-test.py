@@ -384,7 +384,7 @@ def _write_intel_hex(data: bytes, base_address: int, path: str) -> None:
 	row_size = 16
 	current_upper = -1
 
-	with open(path, "w", newline="\n") as f:
+	with open(path, "w", encoding="ascii", newline="\n") as f:
 		for offset in range(0, len(data), row_size):
 			abs_addr = base_address + offset
 			upper = (abs_addr >> 16) & 0xFFFF
