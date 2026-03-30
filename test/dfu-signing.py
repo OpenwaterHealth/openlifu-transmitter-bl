@@ -75,10 +75,12 @@ def _ecdsa_p256_sign_raw(private_key_bytes: bytes, digest32: bytes) -> bytes:
 
 
 def _load_trust_key(key_bytes: bytes) -> bytes:
-    raw = key_bytes.strip()
-    if len(raw) == 32:
-        return raw
+    # First, handle raw binary keys without modifying the bytes.
+    if len(key_bytes) == 32:
+        return key_bytes
 
+    # For hex-encoded keys, allow surrounding whitespace and decode from ASCII hex.
+    raw = key_bytes.strip()
     if len(raw) == 64:
         try:
             decoded = bytes.fromhex(raw.decode("ascii"))
